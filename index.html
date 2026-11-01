@@ -84,6 +84,14 @@ body.transparent #stage::before{display:none}
 #c3 .nm{background:linear-gradient(180deg,#5b101a,#38090f)}
 
 #tag{right:24px;bottom:372px;font-size:30px;font-weight:700;background:#000a;padding:4px 18px;border-radius:6px}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes swing{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(22deg)}}
+@keyframes arm{0%{transform:rotate(-30deg)}60%{transform:rotate(200deg)}100%{transform:rotate(-30deg)}}
+.av{animation:bob 1.6s ease-in-out infinite}
+.av .bat{transform-origin:84px 78px;animation:swing 2.2s ease-in-out infinite}
+.av .arm{transform-origin:84px 74px;animation:arm 2.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.av,.av .bat,.av .arm{animation:none}}
 .hide{display:none!important}
 </style>
 </head>
@@ -123,7 +131,8 @@ body.transparent #stage::before{display:none}
 const CONFIG = {
   API_URL: "",          // apne backend (Worker) ka URL. Khali = demo data
   REFRESH_SECONDS: 5,
-  CHANNEL_TAG: "THE CRICKET ZONE LIVE"
+  CHANNEL_TAG: "THE CRICKET ZONE LIVE",
+  PHOTO_FOLDER: "players/"   // is folder mein player ki image rakho, naam: batter-one.png. Khali "" = sirf cartoon avatar
 };
 /* URL mein ?transparent=1 lagao to background hat jayega (OBS overlay ke liye) */
 if (new URLSearchParams(location.search).get("transparent")==="1") document.body.classList.add("transparent");
@@ -163,24 +172,46 @@ const ballRuns = b => b==="W" ? 0 : b==="Wd"||b==="Nb" ? 1 : (+b||0);
 const ballClass = b => b==="W"?"w": b==="Wd"||b==="Nb"?"x": b==="4"?"f": b==="6"?"s": b==="0"?"d":"";
 const show = (el, ok) => el.classList.toggle("hide", !ok);
 
-const silhouette = '<svg viewBox="0 0 100 120" width="190" height="220"><circle cx="50" cy="34" r="22" fill="#0b1740" opacity=".75"/><path d="M8 120c0-34 18-50 42-50s42 16 42 50z" fill="#0b1740" opacity=".75"/></svg>';
+function avatarHTML(kind, color){
+  const hold = kind==="bowl"
+    ? '<g class="arm"><rect x="80" y="30" width="9" height="46" rx="4" fill="#e0b08a"/></g>'
+    : '<g class="bat"><rect x="82" y="30" width="9" height="46" rx="4" fill="#e0b08a"/><rect x="78" y="-6" width="17" height="48" rx="6" fill="#d9a85b"/></g>';
+  return '<svg class="av" viewBox="0 0 120 150" width="200" height="240">'
+    + hold
+    + '<path d="M18 150c0-44 16-66 42-66s42 22 42 66z" fill="'+color+'"/>'
+    + '<rect x="50" y="62" width="20" height="26" rx="8" fill="#e0b08a"/>'
+    + '<circle cx="60" cy="46" r="24" fill="#e0b08a"/>'
+    + '<path d="M34 44c0-22 12-32 26-32s26 10 26 32z" fill="'+color+'"/>'
+    + '<rect x="30" y="42" width="60" height="7" rx="3" fill="#0b1740" opacity=".55"/>'
+    + '<circle cx="51" cy="52" r="2.6" fill="#222"/><circle cx="69" cy="52" r="2.6" fill="#222"/>'
+    + '<path d="M52 62q8 6 16 0" stroke="#7a3b22" stroke-width="2.4" fill="none" stroke-linecap="round"/>'
+    + '</svg>';
+}
+const slug = n => String(n||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+function photoHTML(p, kind, color){
+  const src = p.photo || (CONFIG.PHOTO_FOLDER ? CONFIG.PHOTO_FOLDER + slug(p.name) + ".png" : "");
+  if(!src) return avatarHTML(kind,color);
+  return '<img src="'+src+'" alt="" onerror="this.outerHTML=avatarHTML(\''+kind+'\',\''+color+'\')">';
+}
 
-function card(el, kind, p){
+function card(el, kind, p, color){
   if(!p){ show(el,false); return; }
   show(el,true);
   el.classList.toggle("strike", !!p.strike);
-  const photo = p.photo ? '<img src="'+p.photo+'" alt="">' : silhouette;
+  const photo = photoHTML(p, kind, color||"#1b4fd8");
+  let html;
   if(kind==="bat"){
     const sr = p.balls ? (p.runs/p.balls*100).toFixed(2) : "0.00";
-    el.innerHTML = '<div class="fig"><div class="big">'+p.runs+'<small>('+p.balls+')</small></div><div class="ph">'+photo+'</div></div>'
+    html = '<div class="fig"><div class="big">'+p.runs+'<small>('+p.balls+')</small></div><div class="ph">'+photo+'</div></div>'
       +'<div class="nm">'+p.name+'</div>'
       +'<div class="st"><span>4s: <b>'+(p.fours??0)+'</b></span><span>6s: <b>'+(p.sixes??0)+'</b></span><span>SR: <b>'+sr+'</b></span></div>';
   } else {
     const f = (p.figures||"").replace(/\s*\(.*\)/,""), o = (p.figures||"").match(/\((.*)\)/);
-    el.innerHTML = '<div class="fig"><div class="big">'+f+'<small>'+(o?'('+o[1]+')':'')+'</small></div><div class="ph">'+photo+'</div></div>'
+    html = '<div class="fig"><div class="big">'+f+'<small>'+(o?'('+o[1]+')':'')+'</small></div><div class="ph">'+photo+'</div></div>'
       +'<div class="nm">'+p.name+'</div>'
       +'<div class="st"><span>Econ: <b>'+(p.econ!=null?Number(p.econ).toFixed(2):"-")+'</b></span></div>';
   }
+  if(el._h!==html){ el.innerHTML=html; el._h=html; }   // same ho to dobara draw nahi, animation smooth rahe
 }
 
 function render(m){
@@ -223,7 +254,7 @@ function render(m){
   show($("psh"), !!m.partnership);
   $("pship").textContent = m.partnership || "";
 
-  card($("c1"),"bat",m.bat1); card($("c2"),"bat",m.bat2); card($("c3"),"bowl",m.bowler);
+  card($("c1"),"bat",m.bat1,m.batTeam.color); card($("c2"),"bat",m.bat2,m.batTeam.color); card($("c3"),"bowl",m.bowler,m.bowlTeam.color);
   $("tag").textContent = CONFIG.CHANNEL_TAG;
 }
 
