@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cricket Score Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0b1f4d; --deep:#071433; --gold:#ffc83d; --white:#f5f7ff;
+    --mute:#9fb0dc; --four:#2fb8ff; --six:#ff7a2f; --wkt:#ff3b4e; --dot:#3a4a7a;
+  }
+  html,body{margin:0;background:transparent;overflow:hidden;font-family:'Barlow',Arial,sans-serif;color:var(--white)}
+  /* OBS: Browser Source size 1920x1080 rakho */
+  .bar{position:absolute;left:40px;bottom:40px;display:flex;align-items:stretch;
+    filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));animation:slide .8s ease-out both}
+  @keyframes slide{from{transform:translateX(-120%)}to{transform:none}}
+  @media (prefers-reduced-motion:reduce){.bar{animation:none}}
+
+  .brand{background:var(--gold);color:var(--deep);padding:0 22px;display:flex;flex-direction:column;
+    justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:26px;
+    line-height:1;border-radius:10px 0 0 10px;letter-spacing:.5px}
+  .brand small{font-weight:700;font-size:14px;margin-top:4px}
+
+  .main{background:linear-gradient(180deg,var(--navy),var(--deep));padding:12px 26px;min-width:330px}
+  .teams{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--mute)}
+  .scoreline{display:flex;align-items:baseline;gap:14px}
+  .score{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:64px;line-height:1}
+  .overs{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;color:var(--gold)}
+  .score.pop{animation:pop .5s}
+  @keyframes pop{40%{transform:scale(1.12);color:var(--gold)}}
+
+  .players{background:var(--navy);padding:12px 22px;display:flex;flex-direction:column;justify-content:center;
+    gap:6px;min-width:250px;border-left:2px solid rgba(255,255,255,.08)}
+  .row{display:flex;justify-content:space-between;gap:20px;font-weight:600;font-size:20px}
+  .row b{font-family:'Barlow Condensed',sans-serif;font-size:24px}
+  .row .strike::after{content:" ●";color:var(--gold);font-size:12px}
+
+  .info{background:var(--deep);padding:12px 22px;border-radius:0 10px 10px 0;display:flex;flex-direction:column;
+    justify-content:center;gap:8px;min-width:230px}
+  .balls{display:flex;gap:7px}
+  .ball{width:32px;height:32px;border-radius:50%;background:var(--dot);display:grid;place-items:center;
+    font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:18px}
+  .ball.b4{background:var(--four);color:var(--deep)}
+  .ball.b6{background:var(--six);color:var(--deep)}
+  .ball.w{background:var(--wkt)}
+  .meta{font-size:18px;color:var(--mute);font-weight:600}
+  .meta strong{color:var(--white)}
+  .chase{color:var(--gold);font-weight:600;font-size:18px}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <div class="brand">YOUR<br>CHANNEL<small>LIVE</small></div>
+
+  <div class="main">
+    <div class="teams" id="teams">IND vs AUS</div>
+    <div class="scoreline"><span class="score" id="score">0/0</span><span class="overs" id="overs">0.0 ov</span></div>
+  </div>
+
+  <div class="players">
+    <div class="row"><span class="strike" id="bat1n">-</span><b id="bat1s">-</b></div>
+    <div class="row"><span id="bat2n">-</span><b id="bat2s">-</b></div>
+    <div class="row" style="color:var(--mute)"><span id="bowln">-</span><b id="bowls">-</b></div>
+  </div>
+
+  <div class="info">
+    <div class="balls" id="balls"></div>
+    <div class="meta">CRR <strong id="crr">0.00</strong> &nbsp; RRR <strong id="rrr">-</strong></div>
+    <div class="chase" id="chase"></div>
+  </div>
+</div>
+
+<script>
+/* ============ SETTINGS ============ */
+const CONFIG = {
+  // Apna backend URL yahan daalo (API key kabhi yahan mat likho). Khali = dummy demo data.
+  API_URL: "",
+  REFRESH_SECONDS: 5
+};
+
+/* API se is format mein data aana chahiye: */
+let match = {
+  teams: "IND vs AUS", target: 172,
+  runs: 98, wkts: 3, overs: 11.2,
+  bat1: {name: "V. Kohli", runs: 41, balls: 28, strike: true},
+  bat2: {name: "S. Iyer",  runs: 17, balls: 14},
+  bowler: {name: "A. Zampa", figures: "1-18 (2.2)"},
+  lastBalls: ["1","0","4","W","6","1"]
+};
+
+/* ============ RENDER ============ */
+const $ = id => document.getElementById(id);
+let lastScore = "";
+
+function render(m){
+  const totalBalls = Math.floor(m.overs) * 6 + Math.round((m.overs % 1) * 10);
+  const crr = totalBalls ? (m.runs / totalBalls * 6) : 0;
+  const score = m.runs + "/" + m.wkts;
+
+  $("teams").textContent = m.teams;
+  $("score").textContent = score;
+  $("overs").textContent = m.overs.toFixed(1) + " ov";
+  if (score !== lastScore && lastScore){ const s=$("score"); s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); }
+  lastScore = score;
+
+  $("bat1n").textContent = m.bat1.name; $("bat1s").textContent = m.bat1.runs + " (" + m.bat1.balls + ")";
+  $("bat2n").textContent = m.bat2.name; $("bat2s").textContent = m.bat2.runs + " (" + m.bat2.balls + ")";
+  $("bowln").textContent = m.bowler.name; $("bowls").textContent = m.bowler.figures;
+
+  $("balls").innerHTML = m.lastBalls.slice(-6).map(b => {
+    const cls = b==="4" ? "b4" : b==="6" ? "b6" : b==="W" ? "w" : "";
+    return '<div class="ball ' + cls + '">' + b + '</div>';
+  }).join("");
+
+  $("crr").textContent = crr.toFixed(2);
+  if (m.target){
+    const need = m.target - m.runs, left = 120 - totalBalls;
+    $("rrr").textContent = left > 0 ? (need / left * 6).toFixed(2) : "-";
+    $("chase").textContent = need > 0 ? "Need " + need + " off " + left + " balls" : "Target achieved";
+  } else { $("rrr").textContent = "-"; $("chase").textContent = ""; }
+}
+
+/* ============ DATA ============ */
+async function fetchLive(){
+  try{
+    const r = await fetch(CONFIG.API_URL, {cache:"no-store"});
+    if(!r.ok) throw new Error(r.status);
+    match = await r.json();
+    render(match);
+  }catch(e){ console.warn("API error, purana data dikha raha hu:", e); }
+}
+
+/* Demo mode: dummy ball-by-ball simulation */
+function demoBall(){
+  const outcomes = ["0","1","1","2","4","6","W","0","1"];
+  const o = outcomes[Math.floor(Math.random()*outcomes.length)];
+  match.lastBalls.push(o); match.lastBalls = match.lastBalls.slice(-6);
+  if (o === "W"){ match.wkts = Math.min(10, match.wkts+1); }
+  else { const r = +o; match.runs += r; match.bat1.runs += r; }
+  match.bat1.balls++;
+  let b = Math.round((match.overs % 1) * 10) + 1, ov = Math.floor(match.overs);
+  if (b === 6){ ov++; b = 0; }
+  match.overs = ov + b/10;
+  render(match);
+}
+
+render(match);
+if (CONFIG.API_URL){ fetchLive(); setInterval(fetchLive, CONFIG.REFRESH_SECONDS*1000); }
+else { setInterval(demoBall, 4000); }
+</script>
+</body>
+</html>
